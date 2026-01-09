@@ -13,14 +13,21 @@ It also features a high-performance **GPU Ghosting (Onion Skinning)** system tha
 - **Reset Sculpt**: Quickly reset the current frame's sculpt to the base mesh state.
 - **Track Management**: Organize your polish frames into named "Tracks" (e.g., "Arm_Fixes", "Face_Tweaks").
 
-### 2. GPU Ghosting (Onion Skins)
+### 2. Smart Navigation & Timeline Integration
+- **Bidirectional Sync**: 
+    - **Auto-Highlight**: As you scrub the timeline, the relevant Shape Key in the UI list is automatically highlighted.
+    - **Dynamic Tracking**: If you move a keyframe in the Dope Sheet, the list updates automatically to reflect the new position.
+    - **Click-to-Jump**: Clicking a Shape Key in the list instantly jumps the timeline to that frame.
+- **Timeline Markers**: Visual markers are drawn directly in the Dope Sheet/Timeline to show where your polish frames are located (Orange for active track, Grey for others).
+
+### 3. GPU Ghosting (Onion Skins)
 - **Zero Clutter**: Ghosts are drawn using the GPU directly to the viewport. No real objects are created, keeping your Outliner clean.
 - **High Performance**: Optimized for speed using GPU batches.
 - **Bake-to-Memory**: Ghosts are "baked" into memory, allowing you to scrub the timeline smoothly without re-evaluating meshes every frame.
 - **Customizable**:
     - **Step Mode**: Show ghosts every N frames.
     - **Keyframe Mode**: Show ghosts only on actual keyframes (great for pose checks).
-    - **Wireframe / Solid**: Toggle between semi-transparent solid or wireframe display.
+    - **Wireframe / Solid**: Toggle between semi-transparent solid, wireframe, or silhouette display.
     - **Colors**: Fully customizable Previous/Next colors with alpha fading.
 
 ## Installation

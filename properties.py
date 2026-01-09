@@ -11,7 +11,32 @@ class PolishTrack(bpy.types.PropertyGroup):
     """A collection of polish items (e.g. for a specific body part)"""
     name: StringProperty(name="Track Name", default="Main Track")
     items: CollectionProperty(type=PolishItem)
-    active_item_index: IntProperty(name="Active Item Index", default=0)
+    
+    def update_active_item_index(self, context):
+        """Callback for when the list selection changes"""
+        # If the change comes from our own auto-hightlight algorithm, ignore valid jumps
+        settings = context.scene.animah_settings
+        if settings.is_scrubbing:
+            return
+            
+        # User clicked manually -> Jump to frame
+        if self.items and 0 <= self.active_item_index < len(self.items):
+            item = self.items[self.active_item_index]
+            context.scene.frame_set(item.frame)
+            
+            # Also select the shape key for editing
+            obj = context.active_object
+            if obj and obj.type == 'MESH' and obj.data.shape_keys:
+                sk_name = item.shape_key_name
+                if sk_name in obj.data.shape_keys.key_blocks:
+                    idx = obj.data.shape_keys.key_blocks.find(sk_name)
+                    obj.active_shape_key_index = idx
+
+    active_item_index: IntProperty(
+        name="Active Item Index", 
+        default=0,
+        update=update_active_item_index
+    )
     
 from . import ghosting
 
@@ -22,6 +47,14 @@ class PolisherSettings(bpy.types.PropertyGroup):
         description="Automatically set 0 influence on previous/next frames",
         default=True
     )
+    
+    # Internal flag to prevent loop: FrameChange -> ListUpdate -> FrameSet -> FrameChange...
+    is_scrubbing: BoolProperty(
+        name="Is Scrubbing",
+        default=False,
+        options={'SKIP_SAVE', 'HIDDEN'}
+    )
+
     neighbor_range: IntProperty(
         name="Neighbor Range",
         description="How many frames away to set the 0 key",
@@ -81,10 +114,15 @@ class PolisherSettings(bpy.types.PropertyGroup):
         max=10,
         update=ghosting.update_ghosts
     )
-    show_wireframe: BoolProperty(
-        name="Show Wireframe",
-        description="Draw ghosts as wireframes",
-        default=False,
+    ghost_display_type: EnumProperty(
+        name="Display Type",
+        description="How to draw the ghosts",
+        items=[
+            ('SOLID', "Solid (Lit)", "Draw as 3D shaded solid"),
+            ('SILHOUETTE', "Silhouette (Flat)", "Draw as flat silhouette"),
+            ('WIRE', "Wireframe", "Draw as wireframe"),
+        ],
+        default='SILHOUETTE',
         update=ghosting.update_ghosts
     )
 
