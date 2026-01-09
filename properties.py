@@ -1,5 +1,6 @@
 import bpy
 from bpy.props import StringProperty, IntProperty, FloatProperty, BoolProperty, CollectionProperty, PointerProperty, EnumProperty, FloatVectorProperty
+from . import ghosting
 
 class PolishItem(bpy.types.PropertyGroup):
     """A single polish/corrective frame"""
@@ -38,13 +39,12 @@ class PolishTrack(bpy.types.PropertyGroup):
         update=update_active_item_index
     )
     
-from . import ghosting
-
 def update_hud(self, context):
+    """Force dopesheet redraw when HUD settings change"""
     for window in context.window_manager.windows:
-        for screen in window.screen.areas:
-            if screen.type == 'DOPESHEET_EDITOR':
-                screen.tag_redraw()
+        for area in window.screen.areas:
+            if area.type == 'DOPESHEET_EDITOR':
+                area.tag_redraw()
 
 class PolisherSettings(bpy.types.PropertyGroup):
     """Global settings for the polisher"""
@@ -160,7 +160,7 @@ def register():
         try:
             bpy.utils.register_class(cls)
         except ValueError:
-            # If already registered, likely a reload issue; ignore or unregister first (risky if different class obj)
+            # Class already registered
             pass
             
     bpy.types.Object.animah_tracks = CollectionProperty(type=PolishTrack)

@@ -187,6 +187,41 @@ def draw_ghosts():
         c[3] *= fade
         return c
 
+    def find_nearest_keyframes(obj, current_frame, count, direction='PREV'):
+        """Find the nearest 'count' keyframes in the given direction from current_frame"""
+        found_frames = []
+        
+        # We look at the Action of the active object or its shape keys
+        # Primarily finding keyframes on the "Polisher" properties or Shape Keys could be complex.
+        # Let's assume we want to ghost strictly on frames where the OBJECT or SHAPE KEYS have keys.
+        # For this addon, we care about the Shape Key Action.
+        
+        action = None
+        if obj.data and obj.data.shape_keys and obj.data.shape_keys.animation_data:
+            action = obj.data.shape_keys.animation_data.action
+            
+        if not action:
+            return []
+            
+        # Collect all unique frame numbers from the action
+        all_keys = set()
+        for fc in action.fcurves:
+            for kp in fc.keyframe_points:
+                all_keys.add(int(kp.co[0]))
+                
+        sorted_keys = sorted(list(all_keys))
+        
+        if direction == 'PREV':
+            # Filter for frames < current_frame, reverse sort to get closest first
+            candidates = [f for f in sorted_keys if f < current_frame]
+            candidates.sort(reverse=True)
+        else: # NEXT
+            # Filter for frames > current_frame, sort to get closest first
+            candidates = [f for f in sorted_keys if f > current_frame]
+            candidates.sort()
+            
+        return candidates[:count]
+
     # PREV
     frames = []
     if settings.ghost_type == 'KEYFRAME':
