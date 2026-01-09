@@ -82,7 +82,7 @@ class ANIMAH_PT_main(bpy.types.Panel):
             
             row = box.row()
             row.prop(settings, "ghost_type")
-            row.prop(settings, "show_wireframe", text="Wireframe")
+            row.prop(settings, "ghost_display_type", text="")
             
             row = box.row()
             if settings.ghost_type == 'STEP':
@@ -92,6 +92,11 @@ class ANIMAH_PT_main(bpy.types.Panel):
             row = box.row()
             row.prop(settings, "ghost_prev_color", text="")
             row.prop(settings, "ghost_next_color", text="")
+            
+        row = box.row()
+        row.prop(settings, "show_hud", toggle=True, icon='HIDE_OFF' if settings.show_hud else 'HIDE_ON')
+        if settings.show_hud:
+            row.prop(settings, "hud_color", text="")
             
         layout.separator()
 

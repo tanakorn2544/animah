@@ -40,6 +40,12 @@ class PolishTrack(bpy.types.PropertyGroup):
     
 from . import ghosting
 
+def update_hud(self, context):
+    for window in context.window_manager.windows:
+        for screen in window.screen.areas:
+            if screen.type == 'DOPESHEET_EDITOR':
+                screen.tag_redraw()
+
 class PolisherSettings(bpy.types.PropertyGroup):
     """Global settings for the polisher"""
     auto_key_neighbors: BoolProperty(
@@ -124,6 +130,23 @@ class PolisherSettings(bpy.types.PropertyGroup):
         ],
         default='SILHOUETTE',
         update=ghosting.update_ghosts
+    )
+    
+    show_hud: BoolProperty(
+        name="Show HUD",
+        description="Show timeline keyframe indicators in the Dope Sheet",
+        default=True,
+        update=update_hud
+    )
+    
+    hud_color: FloatVectorProperty(
+        name="HUD Color",
+        subtype='COLOR',
+        default=(1.0, 0.4, 0.1, 1.0),
+        size=4,
+        min=0.0, max=1.0,
+        description="Color of the Timeline HUD indicators",
+        update=update_hud
     )
 
 classes = (
