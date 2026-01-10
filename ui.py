@@ -12,7 +12,9 @@ class ANIMAH_UL_item_list(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         # Data is PolishTrack, item is PolishItem
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
-            layout.label(text=f"F{item.frame}: {item.shape_key_name}", icon='SHAPEKEY_DATA')
+            row = layout.row(align=True)
+            row.prop(item, "color", text="")
+            row.label(text=f"F{item.frame}: {item.shape_key_name}", icon='SHAPEKEY_DATA')
         elif self.layout_type == 'GRID':
             layout.alignment = 'CENTER'
             layout.label(text=str(item.frame))
@@ -93,10 +95,7 @@ class ANIMAH_PT_main(bpy.types.Panel):
             row.prop(settings, "ghost_prev_color", text="")
             row.prop(settings, "ghost_next_color", text="")
             
-        row = box.row()
-        row.prop(settings, "show_hud", toggle=True, icon='HIDE_OFF' if settings.show_hud else 'HIDE_ON')
-        if settings.show_hud:
-            row.prop(settings, "hud_color", text="")
+        box.prop(settings, "show_hud", toggle=True, icon='HIDE_OFF' if settings.show_hud else 'HIDE_ON')
             
         layout.separator()
 

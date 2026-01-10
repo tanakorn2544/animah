@@ -2,11 +2,27 @@ import bpy
 from bpy.props import StringProperty, IntProperty, FloatProperty, BoolProperty, CollectionProperty, PointerProperty, EnumProperty, FloatVectorProperty
 from . import ghosting
 
+def update_item_color(self, context):
+    """Force dopesheet redraw when item color changes"""
+    for window in context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'DOPESHEET_EDITOR':
+                area.tag_redraw()
+
 class PolishItem(bpy.types.PropertyGroup):
     """A single polish/corrective frame"""
     name: StringProperty(name="Name", default="Polish")
     frame: IntProperty(name="Frame")
     shape_key_name: StringProperty(name="Shape Key Name")
+    color: FloatVectorProperty(
+        name="Color",
+        subtype='COLOR',
+        default=(1.0, 0.4, 0.1, 1.0),
+        size=4,
+        min=0.0, max=1.0,
+        description="Color for this keyframe in the HUD",
+        update=update_item_color
+    )
     
 class PolishTrack(bpy.types.PropertyGroup):
     """A collection of polish items (e.g. for a specific body part)"""

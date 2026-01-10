@@ -15,7 +15,8 @@ def get_shader_2d():
     return _shader_2d
 
 def draw_timeline_markers():
-    """Draw gradient bars in the dopesheet for polish frames using Stepped Transparency (Safe Mode)"""
+    """Draw a colored strip at the TOP of the Dope Sheet for polish frames.
+    Each keyframe marker uses its own custom color."""
     context = bpy.context
     
     if context.space_data.type != 'DOPESHEET_EDITOR':
@@ -38,9 +39,6 @@ def draw_timeline_markers():
     
     neighbor_range = settings.neighbor_range if settings else 4
     
-    # Custom Color
-    base_color = settings.hud_color if settings else (1.0, 0.4, 0.1, 1.0)
-    
     if not track.items:
         return
 
@@ -49,7 +47,7 @@ def draw_timeline_markers():
     if obj.data and obj.data.shape_keys and obj.data.shape_keys.animation_data:
         action = obj.data.shape_keys.animation_data.action
 
-    # Collect frame data as (left_edge, peak, right_edge) tuples
+    # Collect frame data as (left_edge, peak, right_edge, color) tuples
     frame_data = []
     
     # Resolve real-time positions from F-Curves
@@ -57,6 +55,7 @@ def draw_timeline_markers():
         peak_frame = item.frame
         left_edge = peak_frame - neighbor_range
         right_edge = peak_frame + neighbor_range
+        item_color = tuple(item.color)  # per-item color
         
         if action and item.shape_key_name:
             target_path = f'key_blocks["{item.shape_key_name}"].value'
@@ -90,7 +89,7 @@ def draw_timeline_markers():
                     
                     break
         
-        frame_data.append((left_edge, peak_frame, right_edge))
+        frame_data.append((left_edge, peak_frame, right_edge, item_color))
         
     if not frame_data:
         return
@@ -98,82 +97,52 @@ def draw_timeline_markers():
     region = context.region
     view2d = region.view2d
     
-    # HUD Settings - Bar positioned on Value channel row
-    # Dope Sheet row layout (from top): Header, Summary, Object, Key, Value(s)
-    # Typical row height is ~20px, header area ~45px
-    header_offset = 45
-    row_height = 20
+    # HUD Settings - Fixed strip at the TOP of the editor
+    strip_height = 8   # Height in pixels
+    strip_margin = 2   # Margin from top edge
     
-    # Value channels are typically 4 rows down (Summary=1, Object=2, Key=3, Value=4)
-    # We'll draw a bar for each tracked shape key value row
-    value_row_index = 4  # 0-indexed from after header
+    y_max = region.height - strip_margin
+    y_min = y_max - strip_height
     
-    # We will draw 2 simple batches:
-    # 1. Outer Soft Falloff (Based on actual keyframe edges)
-    # 2. Inner Hard Center (The peak frame)
-    
-    # Coordinates lists
-    outer_verts = []
-    outer_indices = []
-    
-    inner_verts = []
-    inner_indices = []
-    
-    # Batch counters
-    o_idx = 0
-    i_idx = 0
-    
-    for item_index, (left_edge, peak_frame, right_edge) in enumerate(frame_data):
-        # Calculate Y position for this specific value channel row
-        # Each value channel is one row below the last
-        row_from_top = value_row_index + item_index
-        y_max = region.height - header_offset - (row_from_top * row_height)
-        y_min = y_max - row_height
-        
-        # 1. Outer Falloff (Based on actual keyframe positions)
-        xl_out, _ = view2d.view_to_region(left_edge, 0)
-        xr_out, _ = view2d.view_to_region(right_edge, 0)
-        
-        outer_verts.extend([
-            (xl_out, y_min), (xl_out, y_max),
-            (xr_out, y_min), (xr_out, y_max)
-        ])
-        outer_indices.extend([
-            (o_idx, o_idx+1, o_idx+2), (o_idx+1, o_idx+3, o_idx+2)
-        ])
-        o_idx += 4
-        
-        # 2. Inner Center (Narrow highlight at peak)
-        framewidth_l, _ = view2d.view_to_region(peak_frame - 0.2, 0)
-        framewidth_r, _ = view2d.view_to_region(peak_frame + 0.2, 0)
-        
-        inner_verts.extend([
-            (framewidth_l, y_min), (framewidth_l, y_max),
-            (framewidth_r, y_min), (framewidth_r, y_max)
-        ])
-        inner_indices.extend([
-            (i_idx, i_idx+1, i_idx+2), (i_idx+1, i_idx+3, i_idx+2)
-        ])
-        i_idx += 4
-
     shader = get_shader_2d()
     gpu.state.blend_set('ALPHA')
     shader.bind()
     
-    # Draw Outer (Soft Gradient Simulation)
-    if outer_verts:
-        # Low Alpha (0.2 * base alpha)
-        c = list(base_color)
-        c[3] *= 0.2
+    # Draw each item with its own color
+    for left_edge, peak_frame, right_edge, item_color in frame_data:
+        # 1. Outer Falloff (Based on actual keyframe positions)
+        xl_out, _ = view2d.view_to_region(left_edge, 0)
+        xr_out, _ = view2d.view_to_region(right_edge, 0)
+        
+        # Skip if completely off-screen
+        if xr_out < 0 or xl_out > region.width:
+            continue
+        
+        # Outer box (softer)
+        outer_verts = [
+            (xl_out, y_min), (xl_out, y_max),
+            (xr_out, y_min), (xr_out, y_max)
+        ]
+        outer_indices = [(0, 1, 2), (1, 3, 2)]
+        
+        c = list(item_color)
+        c[3] *= 0.25  # soft falloff alpha
         shader.uniform_float("color", tuple(c))
         batch_out = batch_for_shader(shader, 'TRIS', {"pos": outer_verts}, indices=outer_indices)
         batch_out.draw(shader)
         
-    # Draw Inner (Strong Center)
-    if inner_verts:
-        # High Alpha (0.8 * base alpha)
-        c = list(base_color)
-        c[3] *= 0.8
+        # 2. Inner Center (Narrow highlight at peak)
+        framewidth_l, _ = view2d.view_to_region(peak_frame - 0.4, 0)
+        framewidth_r, _ = view2d.view_to_region(peak_frame + 0.4, 0)
+        
+        inner_verts = [
+            (framewidth_l, y_min), (framewidth_l, y_max),
+            (framewidth_r, y_min), (framewidth_r, y_max)
+        ]
+        inner_indices = [(0, 1, 2), (1, 3, 2)]
+        
+        c = list(item_color)
+        c[3] *= 0.9  # strong center alpha
         shader.uniform_float("color", tuple(c))
         batch_in = batch_for_shader(shader, 'TRIS', {"pos": inner_verts}, indices=inner_indices)
         batch_in.draw(shader)
