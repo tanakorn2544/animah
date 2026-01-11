@@ -95,7 +95,7 @@ class PolisherSettings(bpy.types.PropertyGroup):
     ghost_prev_color: FloatVectorProperty(
         name="Prev Color",
         subtype='COLOR',
-        default=(1.0, 0.0, 0.0, 0.5),
+        default=(1.0, 0.0, 0.0, 0.2),
         size=4,
         min=0.0, max=1.0,
         description="Color for previous frame ghost (RGBA)",
@@ -104,7 +104,7 @@ class PolisherSettings(bpy.types.PropertyGroup):
     ghost_next_color: FloatVectorProperty(
         name="Next Color",
         subtype='COLOR',
-        default=(0.0, 1.0, 0.0, 0.5),
+        default=(0.0, 1.0, 0.0, 0.2),
         size=4,
         min=0.0, max=1.0,
         description="Color for next frame ghost (RGBA)",
