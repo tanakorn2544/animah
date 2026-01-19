@@ -127,6 +127,53 @@ class ANIMAH_OT_add_polish_frame(bpy.types.Operator):
         self.report({'INFO'}, f"Added Polish Frame: {shape_name}")
         return {'FINISHED'}
 
+class ANIMAH_OT_remove_polish_item(bpy.types.Operator):
+    """Remove the selected polish item and delete its shape key"""
+    bl_idname = "animah.remove_polish_item"
+    bl_label = "Remove Polish Item"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if not obj or obj.type != 'MESH':
+            return False
+        if not obj.animah_tracks:
+            return False
+        track = obj.animah_tracks[obj.animah_active_track_index]
+        return len(track.items) > 0
+    
+    def execute(self, context):
+        obj = context.active_object
+        track = obj.animah_tracks[obj.animah_active_track_index]
+        
+        if not track.items:
+            self.report({'WARNING'}, "No items to remove")
+            return {'CANCELLED'}
+        
+        # Get the item to remove
+        item_index = track.active_item_index
+        item = track.items[item_index]
+        shape_key_name = item.shape_key_name
+        
+        # 1. Remove the shape key from the mesh
+        if obj.data.shape_keys and shape_key_name in obj.data.shape_keys.key_blocks:
+            sk = obj.data.shape_keys.key_blocks[shape_key_name]
+            obj.shape_key_remove(sk)
+            self.report({'INFO'}, f"Deleted Shape Key: {shape_key_name}")
+        else:
+            self.report({'WARNING'}, f"Shape Key '{shape_key_name}' not found on mesh")
+        
+        # 2. Remove the item from the track
+        track.items.remove(item_index)
+        
+        # 3. Adjust the active index
+        if track.active_item_index >= len(track.items):
+            track.active_item_index = max(0, len(track.items) - 1)
+        
+        return {'FINISHED'}
+
+
 class ANIMAH_OT_reset_polish_frame(bpy.types.Operator):
     """Reset the active shape key to match Basis (Clear Sculpt)"""
     bl_idname = "animah.reset_polish_frame"
@@ -172,6 +219,7 @@ classes = (
     ANIMAH_OT_add_track,
     ANIMAH_OT_remove_track,
     ANIMAH_OT_add_polish_frame,
+    ANIMAH_OT_remove_polish_item,
     ANIMAH_OT_reset_polish_frame,
     ANIMAH_OT_bake_ghosts,
 )

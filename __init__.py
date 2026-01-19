@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Animah Polisher",
     "author": "Korn Sensei",
-    "version": (1, 0),
+    "version": (1, 1),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Animah",
     "description": "Shot sculpting and polish tool similar to Maya's Animatrix",

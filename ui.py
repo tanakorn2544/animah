@@ -112,6 +112,10 @@ class ANIMAH_PT_main(bpy.types.Panel):
                 active_track, "active_item_index",
                 rows=5
             )
+            
+            # Delete button column
+            col = row.column(align=True)
+            col.operator("animah.remove_polish_item", icon='REMOVE', text="")
 
 classes = (
     ANIMAH_UL_track_list,
