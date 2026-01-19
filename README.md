@@ -12,6 +12,7 @@ It also features a high-performance **GPU Ghosting (Onion Skinning)** system tha
 - **Smooth Interpolation**: Automatically sets keyframe handles to `Auto Clamped` to prevent overshoots.
 - **Reset Sculpt**: Quickly reset the current frame's sculpt to the base mesh state.
 - **Track Management**: Organize your polish frames into named "Tracks" (e.g., "Arm_Fixes", "Face_Tweaks").
+- **Delete Polish Item**: Remove any polish frame with a single click—both the list entry and the actual Shape Key are deleted from the mesh.
 
 ### 2. Smart Navigation & Timeline Integration
 - **Bidirectional Sync**: 
