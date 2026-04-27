@@ -3,10 +3,10 @@ from bpy.props import StringProperty, IntProperty, FloatProperty, BoolProperty, 
 from . import ghosting
 
 def update_item_color(self, context):
-    """Force dopesheet redraw when item color changes"""
+    """Force Dope Sheet and Timeline redraw when item color changes"""
     for window in context.window_manager.windows:
         for area in window.screen.areas:
-            if area.type == 'DOPESHEET_EDITOR':
+            if area.type in {'DOPESHEET_EDITOR', 'TIMELINE'}:
                 area.tag_redraw()
 
 class PolishItem(bpy.types.PropertyGroup):
@@ -32,8 +32,8 @@ class PolishTrack(bpy.types.PropertyGroup):
     def update_active_item_index(self, context):
         """Callback for when the list selection changes"""
         # If the change comes from our own auto-hightlight algorithm, ignore valid jumps
-        settings = context.scene.animah_settings
-        if settings.is_scrubbing:
+        settings = getattr(context.scene, "animah_settings", None)
+        if not settings or settings.is_scrubbing:
             return
             
         # User clicked manually -> Jump to frame
@@ -56,10 +56,10 @@ class PolishTrack(bpy.types.PropertyGroup):
     )
     
 def update_hud(self, context):
-    """Force dopesheet redraw when HUD settings change"""
+    """Force Dope Sheet and Timeline redraw when HUD settings change"""
     for window in context.window_manager.windows:
         for area in window.screen.areas:
-            if area.type == 'DOPESHEET_EDITOR':
+            if area.type in {'DOPESHEET_EDITOR', 'TIMELINE'}:
                 area.tag_redraw()
 
 class PolisherSettings(bpy.types.PropertyGroup):

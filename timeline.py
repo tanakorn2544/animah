@@ -6,8 +6,6 @@ _handle_dopesheet = None
 _handle_timeline = None
 _shader_2d = None
 
-_shader_2d = None
-
 def get_shader_2d():
     global _shader_2d
     if not _shader_2d:
@@ -18,8 +16,8 @@ def draw_timeline_markers():
     """Draw a colored strip at the TOP of the Dope Sheet for polish frames.
     Each keyframe marker uses its own custom color."""
     context = bpy.context
-    
-    if context.space_data.type != 'DOPESHEET_EDITOR':
+
+    if context.space_data is None or context.space_data.type not in {'DOPESHEET_EDITOR', 'TIMELINE'}:
         return
 
     obj = context.active_object
@@ -27,7 +25,7 @@ def draw_timeline_markers():
         return
 
     active_idx = obj.animah_active_track_index
-    if active_idx >= len(obj.animah_tracks):
+    if active_idx < 0 or active_idx >= len(obj.animah_tracks):
         return
 
     track = obj.animah_tracks[active_idx]
@@ -110,42 +108,41 @@ def draw_timeline_markers():
     
     # Draw each item with its own color
     for left_edge, peak_frame, right_edge, item_color in frame_data:
-        # 1. Outer Falloff (Based on actual keyframe positions)
-        xl_out, _ = view2d.view_to_region(left_edge, 0)
-        xr_out, _ = view2d.view_to_region(right_edge, 0)
-        
-        # Skip if completely off-screen
-        if xr_out < 0 or xl_out > region.width:
-            continue
-        
-        # Outer box (softer)
-        outer_verts = [
-            (xl_out, y_min), (xl_out, y_max),
-            (xr_out, y_min), (xr_out, y_max)
-        ]
-        outer_indices = [(0, 1, 2), (1, 3, 2)]
-        
-        c = list(item_color)
-        c[3] *= 0.25  # soft falloff alpha
-        shader.uniform_float("color", tuple(c))
-        batch_out = batch_for_shader(shader, 'TRIS', {"pos": outer_verts}, indices=outer_indices)
-        batch_out.draw(shader)
-        
-        # 2. Inner Center (Narrow highlight at peak)
-        framewidth_l, _ = view2d.view_to_region(peak_frame - 0.4, 0)
-        framewidth_r, _ = view2d.view_to_region(peak_frame + 0.4, 0)
-        
-        inner_verts = [
-            (framewidth_l, y_min), (framewidth_l, y_max),
-            (framewidth_r, y_min), (framewidth_r, y_max)
-        ]
-        inner_indices = [(0, 1, 2), (1, 3, 2)]
-        
-        c = list(item_color)
-        c[3] *= 0.9  # strong center alpha
-        shader.uniform_float("color", tuple(c))
-        batch_in = batch_for_shader(shader, 'TRIS', {"pos": inner_verts}, indices=inner_indices)
-        batch_in.draw(shader)
+        # Use clip=False so off-screen frames return real (extrapolated) pixel x,
+        # not the 12345 sentinel that view_to_region returns with clip=True.
+        xl_out, _ = view2d.view_to_region(left_edge, 0, clip=False)
+        xr_out, _ = view2d.view_to_region(right_edge, 0, clip=False)
+        peak_px_f, _ = view2d.view_to_region(peak_frame, 0, clip=False)
+        peak_px = int(round(peak_px_f))
+
+        # 1. Outer Falloff strip — only if at least partially on-screen.
+        if xr_out >= 0 and xl_out <= region.width:
+            outer_verts = [
+                (xl_out, y_min), (xl_out, y_max),
+                (xr_out, y_min), (xr_out, y_max)
+            ]
+            outer_indices = [(0, 1, 2), (1, 3, 2)]
+            c = list(item_color)
+            c[3] *= 0.25  # soft falloff alpha
+            shader.uniform_float("color", tuple(c))
+            batch_out = batch_for_shader(shader, 'TRIS', {"pos": outer_verts}, indices=outer_indices)
+            batch_out.draw(shader)
+
+        # 2. Pixel-aligned narrow bar AT the exact peak keyframe — confined to
+        #    the strip height (same vertical extent as the falloff strip).
+        if -1 <= peak_px <= region.width + 1:
+            line_x0 = peak_px - 1
+            line_x1 = peak_px + 2  # 3-px crisp bar centered on the keyframe pixel
+            line_verts = [
+                (line_x0, y_min), (line_x0, y_max),
+                (line_x1, y_min), (line_x1, y_max)
+            ]
+            line_indices = [(0, 1, 2), (1, 3, 2)]
+            c = list(item_color)
+            c[3] *= 0.95  # strong alpha so the pin is clearly readable
+            shader.uniform_float("color", tuple(c))
+            batch_line = batch_for_shader(shader, 'TRIS', {"pos": line_verts}, indices=line_indices)
+            batch_line.draw(shader)
 
     gpu.state.blend_set('NONE')
 
@@ -157,9 +154,9 @@ def sync_list_to_timeline(scene, depsgraph=None):
     if not obj or not getattr(obj, "animah_tracks", None):
         return
         
-    if obj.animah_active_track_index >= len(obj.animah_tracks):
+    if obj.animah_active_track_index < 0 or obj.animah_active_track_index >= len(obj.animah_tracks):
         return
-        
+
     track = obj.animah_tracks[obj.animah_active_track_index]
     if not track.items:
         return
@@ -182,14 +179,14 @@ def sync_list_to_timeline(scene, depsgraph=None):
                 fcurve = action.fcurves.find(data_path)
                 
                 if fcurve:
-                    # Find the "Peak" keyframe (value close to 1.0)
-                    # Optimization: Likely checking just the keypoints is fast enough for typical counts
+                    # Find the actual peak (highest value keyframe), matching the draw logic.
                     peak_frame = None
+                    peak_val = -1.0
                     for kp in fcurve.keyframe_points:
-                        if kp.co[1] > 0.5: # Assuming peak is significant
+                        if kp.co[1] > peak_val:
+                            peak_val = kp.co[1]
                             peak_frame = int(kp.co[0])
-                            break
-                    
+
                     if peak_frame is not None and peak_frame != item.frame:
                         item.frame = peak_frame
     
@@ -214,45 +211,42 @@ def sync_list_to_timeline(scene, depsgraph=None):
 
 
 @bpy.app.handlers.persistent
-def force_dopesheet_redraw(scene, depsgraph=None):
-    """Force dopesheet to redraw after any scene change"""
+def force_animah_redraw(scene, depsgraph=None):
+    """Force Dope Sheet and Timeline editors to redraw after any scene change"""
     for window in bpy.context.window_manager.windows:
         for area in window.screen.areas:
-            if area.type == 'DOPESHEET_EDITOR':
+            if area.type in {'DOPESHEET_EDITOR', 'TIMELINE'}:
                 area.tag_redraw()
 
 def register():
     global _handle_dopesheet, _handle_timeline
-    
+
     # Register sync handler
     if sync_list_to_timeline not in bpy.app.handlers.frame_change_post:
         bpy.app.handlers.frame_change_post.append(sync_list_to_timeline)
-    
+
     # Register depsgraph handler for forced refresh after edits
-    if force_dopesheet_redraw not in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.append(force_dopesheet_redraw)
+    if force_animah_redraw not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(force_animah_redraw)
 
     if _handle_dopesheet is None:
         _handle_dopesheet = bpy.types.SpaceDopeSheetEditor.draw_handler_add(draw_timeline_markers, (), 'WINDOW', 'POST_PIXEL')
-        
+
     if _handle_timeline is None:
-        # Timeline is technically SpaceGraphEditor? No SpaceTimeline?
-        # Actually SpaceDopeSheetEditor covers Action Editor, Dope Sheet.
-        # Logic Editor -> Timeline is separate?
-        # Blender 4.0: Timeline is just a Dopesheet mode usually? No handle separate?
-        # Actually `SpaceTimeline` exists but often we use DopeSheet for seeing keys.
-        # Let's add to SpaceGraphEditor (F-Curves) too?
-        # Let's stick to Dopesheet for now.
-        pass
+        _handle_timeline = bpy.types.SpaceTimeline.draw_handler_add(draw_timeline_markers, (), 'WINDOW', 'POST_PIXEL')
 
 def unregister():
-    global _handle_dopesheet
+    global _handle_dopesheet, _handle_timeline
     if _handle_dopesheet is not None:
         bpy.types.SpaceDopeSheetEditor.draw_handler_remove(_handle_dopesheet, 'WINDOW')
         _handle_dopesheet = None
-        
+
+    if _handle_timeline is not None:
+        bpy.types.SpaceTimeline.draw_handler_remove(_handle_timeline, 'WINDOW')
+        _handle_timeline = None
+
     if sync_list_to_timeline in bpy.app.handlers.frame_change_post:
         bpy.app.handlers.frame_change_post.remove(sync_list_to_timeline)
-    
-    if force_dopesheet_redraw in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.remove(force_dopesheet_redraw)
+
+    if force_animah_redraw in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(force_animah_redraw)

@@ -1,7 +1,6 @@
 import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
-import bgl
 
 # Global Cache: { frame_number: {'batch': batch, 'matrix': matrix} }
 GHOST_CACHE = {}
@@ -18,11 +17,20 @@ def get_shader():
             _shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
     return _shader
 
+def tag_redraw_view3d():
+    """Redraw all View3D areas across all windows."""
+    wm = bpy.context.window_manager
+    if not wm:
+        return
+    for window in wm.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
+
 def clear_cache():
     global GHOST_CACHE
     GHOST_CACHE.clear()
-    if bpy.context.area:
-        bpy.context.area.tag_redraw()
+    tag_redraw_view3d()
 
 _lit_shader = None
 def get_lit_shader():
@@ -142,21 +150,21 @@ def bake_ghosts_to_memory(context):
                 
     finally:
         scene.frame_set(original_frame)
-        context.area.tag_redraw()
+        tag_redraw_view3d()
         print("GPU Bake Complete.")
 
 
 
 def draw_ghosts():
     context = bpy.context
-    if not context.scene.animah_settings.show_ghosts:
+    settings = getattr(context.scene, "animah_settings", None)
+    if not settings or not settings.show_ghosts:
         return
-    
+
     obj = context.active_object
     if not obj or obj.type != 'MESH':
         return
-        
-    settings = context.scene.animah_settings
+
     current_frame = context.scene.frame_current
     
     display_type = settings.ghost_display_type
@@ -251,45 +259,36 @@ def draw_ghosts():
         data = GHOST_CACHE.get(frame_idx)
         if not data:
             continue
-            
+
         matrix = data['matrix']
-        
-        gpu.matrix.push()
-        gpu.matrix.multiply_matrix(matrix)
-        
         shader.uniform_float("color", color)
-        
+
         if display_type == 'SOLID':
-            # Needs viewProjectionMatrix?
-            # Custom shaders usually need explicit update of builtin uniforms
-            # Or uses `gpu.matrix.get_model_view_matrix()` etc?
-            # Actually gpu.types.GPUShader creates a shader that might NOT automatically bind the builtins the way `from_builtin` does.
-            # However, recent Blender wrapper handles `viewProjectionMatrix` if named correctly.
-            # We need `modelMatrix` too.
-            # In new GPU API, we often pass `gpu.matrix.get_model_view_matrix()` to uniform.
-            # But let's check standard practice.
-            # Simpler: use built-in for simplicity if possible. 
-            pass # Shader will use uniforms
-            
-        if display_type == 'WIRE':
-            # Use Wire Batch
+            # Custom GPUShader does not auto-bind the gpu.matrix stack.
+            # Pass view-projection and model matrix as uniforms explicitly.
+            view_proj = gpu.matrix.get_projection_matrix() @ gpu.matrix.get_model_view_matrix()
+            shader.uniform_float("viewProjectionMatrix", view_proj)
+            shader.uniform_float("modelMatrix", matrix)
+            data['batch'].draw(shader)
+        elif display_type == 'WIRE':
+            # Built-in UNIFORM_COLOR uses gpu.matrix stack
+            gpu.matrix.push()
+            gpu.matrix.multiply_matrix(matrix)
             if 'batch_wire' in data:
                 data['batch_wire'].draw(shader)
+            gpu.matrix.pop()
         else:
-             # SOLID or SILHOUETTE
-             # Both use 'batch' (TRIS)
-             # SOLID uses custom shader which reads pos/normal. 'batch' has them.
-             # SILHOUETTE uses UNIFORM_COLOR which reads pos. 'batch' has them.
-             data['batch'].draw(shader)
-             
-        gpu.matrix.pop()
-        
+            # SILHOUETTE — built-in UNIFORM_COLOR + 'batch' (uses pos only, ignores normals)
+            gpu.matrix.push()
+            gpu.matrix.multiply_matrix(matrix)
+            data['batch'].draw(shader)
+            gpu.matrix.pop()
+
     gpu.state.blend_set('NONE')
 
 def update_ghosts(self, context):
-    # Just trigger redraw
-    if context.area:
-        context.area.tag_redraw()
+    # Triggered from settings property updates — redraw all 3D viewports.
+    tag_redraw_view3d()
 
 def register():
     global _handler

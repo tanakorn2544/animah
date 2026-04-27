@@ -28,13 +28,17 @@ class ANIMAH_OT_remove_track(bpy.types.Operator):
         obj = context.active_object
         if not obj or not obj.animah_tracks:
             return {'CANCELLED'}
-            
-        obj.animah_tracks.remove(obj.animah_active_track_index)
-        
+
+        idx = obj.animah_active_track_index
+        if idx < 0 or idx >= len(obj.animah_tracks):
+            return {'CANCELLED'}
+
+        obj.animah_tracks.remove(idx)
+
         # Adjust index
         if obj.animah_active_track_index >= len(obj.animah_tracks):
             obj.animah_active_track_index = max(0, len(obj.animah_tracks) - 1)
-            
+
         return {'FINISHED'}
 
 class ANIMAH_OT_bake_ghosts(bpy.types.Operator):
@@ -46,7 +50,9 @@ class ANIMAH_OT_bake_ghosts(bpy.types.Operator):
         from . import ghosting
         ghosting.bake_ghosts_to_memory(context)
         # Enable display if not enabled
-        context.scene.animah_settings.show_ghosts = True
+        settings = context.scene.animah_settings
+        if settings:
+            settings.show_ghosts = True
         return {'FINISHED'}
 
 class ANIMAH_OT_add_polish_frame(bpy.types.Operator):
@@ -64,7 +70,10 @@ class ANIMAH_OT_add_polish_frame(bpy.types.Operator):
         # Ensure we have tracks
         if not obj.animah_tracks:
             bpy.ops.animah.add_track()
-            
+
+        # Bound-check the active index in case it's stale
+        if obj.animah_active_track_index < 0 or obj.animah_active_track_index >= len(obj.animah_tracks):
+            obj.animah_active_track_index = max(0, len(obj.animah_tracks) - 1)
         track = obj.animah_tracks[obj.animah_active_track_index]
         current_frame = context.scene.frame_current
         
@@ -86,7 +95,7 @@ class ANIMAH_OT_add_polish_frame(bpy.types.Operator):
         
         # 2. Keyframe 0.0 at neighbors
         settings = context.scene.animah_settings
-        if settings.auto_key_neighbors:
+        if settings and settings.auto_key_neighbors:
             range_val = settings.neighbor_range
             sk.value = 0.0
             sk.keyframe_insert(data_path="value", frame=current_frame - range_val)
@@ -140,7 +149,10 @@ class ANIMAH_OT_remove_polish_item(bpy.types.Operator):
             return False
         if not obj.animah_tracks:
             return False
-        track = obj.animah_tracks[obj.animah_active_track_index]
+        idx = obj.animah_active_track_index
+        if idx < 0 or idx >= len(obj.animah_tracks):
+            return False
+        track = obj.animah_tracks[idx]
         return len(track.items) > 0
     
     def execute(self, context):
@@ -215,6 +227,95 @@ class ANIMAH_OT_reset_polish_frame(bpy.types.Operator):
         self.report({'INFO'}, f"Reset Shape Key: {active_sk.name}")
         return {'FINISHED'}
 
+def _active_track(context):
+    obj = context.active_object
+    if not obj or not getattr(obj, "animah_tracks", None):
+        return None, None
+    idx = obj.animah_active_track_index
+    if idx < 0 or idx >= len(obj.animah_tracks):
+        return obj, None
+    return obj, obj.animah_tracks[idx]
+
+
+class ANIMAH_OT_jump_prev_polish(bpy.types.Operator):
+    """Jump the playhead to the previous polish frame in the active track"""
+    bl_idname = "animah.jump_prev_polish"
+    bl_label = "Previous Polish"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        _, track = _active_track(context)
+        return bool(track and track.items)
+
+    def execute(self, context):
+        obj, track = _active_track(context)
+        if not track or not track.items:
+            return {'CANCELLED'}
+        cur = context.scene.frame_current
+        candidates = sorted({int(it.frame) for it in track.items if int(it.frame) < cur}, reverse=True)
+        if not candidates:
+            self.report({'INFO'}, "No earlier polish frame")
+            return {'CANCELLED'}
+        target = candidates[0]
+        context.scene.frame_set(target)
+        for i, it in enumerate(track.items):
+            if int(it.frame) == target:
+                track.active_item_index = i
+                break
+        return {'FINISHED'}
+
+
+class ANIMAH_OT_jump_next_polish(bpy.types.Operator):
+    """Jump the playhead to the next polish frame in the active track"""
+    bl_idname = "animah.jump_next_polish"
+    bl_label = "Next Polish"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        _, track = _active_track(context)
+        return bool(track and track.items)
+
+    def execute(self, context):
+        obj, track = _active_track(context)
+        if not track or not track.items:
+            return {'CANCELLED'}
+        cur = context.scene.frame_current
+        candidates = sorted({int(it.frame) for it in track.items if int(it.frame) > cur})
+        if not candidates:
+            self.report({'INFO'}, "No later polish frame")
+            return {'CANCELLED'}
+        target = candidates[0]
+        context.scene.frame_set(target)
+        for i, it in enumerate(track.items):
+            if int(it.frame) == target:
+                track.active_item_index = i
+                break
+        return {'FINISHED'}
+
+
+class ANIMAH_OT_toggle_sculpt_mode(bpy.types.Operator):
+    """Toggle Sculpt Mode for the active mesh (without creating a new polish)"""
+    bl_idname = "animah.toggle_sculpt_mode"
+    bl_label = "Toggle Sculpt Mode"
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj and obj.type == 'MESH'
+
+    def execute(self, context):
+        obj = context.active_object
+        if not obj or obj.type != 'MESH':
+            return {'CANCELLED'}
+        if obj.mode == 'SCULPT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        else:
+            bpy.ops.object.mode_set(mode='SCULPT')
+        return {'FINISHED'}
+
+
 classes = (
     ANIMAH_OT_add_track,
     ANIMAH_OT_remove_track,
@@ -222,6 +323,9 @@ classes = (
     ANIMAH_OT_remove_polish_item,
     ANIMAH_OT_reset_polish_frame,
     ANIMAH_OT_bake_ghosts,
+    ANIMAH_OT_jump_prev_polish,
+    ANIMAH_OT_jump_next_polish,
+    ANIMAH_OT_toggle_sculpt_mode,
 )
 
 def register():
